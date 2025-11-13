@@ -6,8 +6,8 @@ This repository contains 6 different integration patterns for sending logs from 
 
 | Phase | Name | Protocol | OTEL Routing | Customer Change |
 |-------|------|----------|--------------|-----------------|
-| **Phase 1** | Direct HEC to Splunk | HEC | No | Application code |
-| **Phase 2** | Dual Shipper (File-Based) | HEC + File | Partial | Application code |
+| **Phase 1** | Direct HEC to Splunk | HEC | No | - |
+| **Phase 2** | Dual Shipper (File-Based) | HEC + File | Partial | Application code - configure otel|
 | **Phase 3** | Central HEC Routing | HEC | Yes | **Endpoint only** |
 | **Phase 4** | Splunk UF via HEC | HEC | Yes | **Endpoint only** |
 | **Phase 5** | Independent Dual Paths | TCP + File | Partial | Endpoint only |

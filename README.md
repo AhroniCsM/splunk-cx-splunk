@@ -4,18 +4,33 @@ This repository contains 6 different integration patterns for sending logs from 
 
 ## Quick Overview
 
-| Phase | Goal | Protocol | OTEL Routing | Customer Change |
+| Phase | Name | Protocol | OTEL Routing | Customer Change |
 |-------|------|----------|--------------|-----------------|
-| **Phase 1** | Direct to Splunk | HEC | No | Application code |
-| **Phase 2** | Dual destination (file-based) | HEC + File | Partial | Application code |
-| **Phase 3** | Central OTEL routing | HEC | Yes | **Endpoint only** |
-| **Phase 4** | Splunk UF with HEC to OTEL | HEC | Yes | **Endpoint only** |
-| **Phase 5** | Independent dual paths | TCP + File | Partial | Endpoint only |
-| **Phase 6** | **Splunk UF RAW TCP to OTEL** | **TCP (RAW)** | **Yes** | **Endpoint only** |
+| **Phase 1** | Direct HEC to Splunk | HEC | No | Application code |
+| **Phase 2** | Dual Shipper (File-Based) | HEC + File | Partial | Application code |
+| **Phase 3** | Central HEC Routing | HEC | Yes | **Endpoint only** |
+| **Phase 4** | Splunk UF via HEC | HEC | Yes | **Endpoint only** |
+| **Phase 5** | Independent Dual Paths | TCP + File | Partial | Endpoint only |
+| **Phase 6** | **Splunk UF RAW TCP** ⭐ | **TCP (RAW)** | **Yes** | **Endpoint only** |
 
-## Phase Descriptions
+---
 
-### Phase 1 - Direct HEC Integration
+## Phase Architectures
+
+### Phase 1: Direct HEC to Splunk
+```
+┌─────────────┐
+│   Python    │
+│     App     │
+└──────┬──────┘
+       │ HEC
+       │ (HTTP)
+       ↓
+┌─────────────┐
+│   Splunk    │
+│    Cloud    │
+└─────────────┘
+```
 **Goal**: Send logs directly from application to Splunk Cloud using HEC.
 
 **Use When:**
@@ -27,7 +42,21 @@ This repository contains 6 different integration patterns for sending logs from 
 
 ---
 
-### Phase 2 - Dual Destination (File-Based)
+### Phase 2: Dual Shipper (File-Based)
+```
+                        ┌──────────────┐
+                   ┌───→│ Python HEC   │──→ Splunk Cloud
+                   │    │   Shipper    │
+┌─────────────┐    │    └──────────────┘
+│   Python    │    │
+│     App     │────┤
+│ (Logs only) │    │    ┌──────────────┐
+└─────────────┘    └───→│     OTEL     │──→ Coralogix
+                        │  Collector   │
+      Writes to         └──────────────┘
+      shared file
+    (same RequestID)
+```
 **Goal**: Send the **same logs** to both Splunk and Coralogix from a single application.
 
 **Use When:**
@@ -39,7 +68,16 @@ This repository contains 6 different integration patterns for sending logs from 
 
 ---
 
-### Phase 3 - Central OTEL Collector (HEC to OTEL)
+### Phase 3: Central HEC Routing
+```
+┌─────────────┐      HEC       ┌──────────────┐
+│   Python    │   (HTTP)       │     OTEL     │──→ Splunk Cloud
+│     App     │───────────────→│  Collector   │
+│  (with HEC) │  Port 8088     │  (Central)   │──→ Coralogix
+└─────────────┘                └──────────────┘
+                                      ↑
+                  Customer only changes endpoint here!
+```
 **Goal**: Application sends HEC to OTEL Collector, which forwards to both Splunk and Coralogix.
 
 **Use When:**
@@ -58,7 +96,16 @@ SPLUNK_HEC_URL = "http://YOUR_OTEL_IP:8088"
 
 ---
 
-### Phase 4 - Splunk Universal Forwarder with HEC to OTEL
+### Phase 4: Splunk UF via HEC
+```
+┌─────────────┐                ┌──────────────┐
+│   Python    │  Writes to     │   Splunk     │      HEC       ┌──────────────┐
+│     App     │──→ log file ──→│  Universal   │───────────────→│     OTEL     │──→ Splunk Cloud
+│ (Logs only) │                │  Forwarder   │   Port 8088    │  Collector   │
+└─────────────┘                └──────────────┘                └──────────────┘──→ Coralogix
+                                      ↑
+                          Customer only changes outputs.conf!
+```
 **Goal**: Use Splunk UF to read logs and send via HEC to OTEL Collector.
 
 **Use When:**
@@ -77,7 +124,21 @@ uri = http://YOUR_OTEL_IP:8088/services/collector
 
 ---
 
-### Phase 5 - Dual Path (Splunk TCP + OTEL File)
+### Phase 5: Independent Dual Paths
+```
+                                ┌──────────────┐    TCP
+                           ┌───→│   Splunk     │──────────→ Splunk Cloud
+                           │    │  Universal   │  Port 9997
+┌─────────────┐            │    │  Forwarder   │
+│   Python    │  Writes to │    └──────────────┘
+│     App     │──→ log file┤
+│ (Logs only) │            │    ┌──────────────┐
+└─────────────┘            └───→│     OTEL     │──────────→ Coralogix
+                                │  Collector   │
+                                └──────────────┘
+
+                           Independent paths (no central routing)
+```
 **Goal**: Send logs to Splunk via native TCP AND to Coralogix via OTEL (independent paths).
 
 **Use When:**
@@ -91,7 +152,17 @@ uri = http://YOUR_OTEL_IP:8088/services/collector
 
 ---
 
-### Phase 6 - Splunk UF with RAW TCP to OTEL ⭐ RECOMMENDED
+### Phase 6: Splunk UF RAW TCP ⭐ RECOMMENDED
+```
+┌─────────────┐                ┌──────────────┐     RAW TCP    ┌──────────────┐
+│   Python    │  Writes to     │   Splunk     │  (Plain Text)  │     OTEL     │──→ Splunk Cloud
+│     App     │──→ log file ──→│  Universal   │───────────────→│  Collector   │
+│ (Logs only) │                │  Forwarder   │   Port 9997    │  (Central)   │──→ Coralogix
+└─────────────┘                └──────────────┘                └──────────────┘
+                                      ↑
+                            sendCookedData=false
+                         (Makes TCP work with OTEL!)
+```
 **Goal**: Use Splunk UF with RAW TCP mode to send to OTEL Collector, which forwards to both destinations.
 
 **Use When:**

@@ -1,76 +1,124 @@
+# Phase 6 - Official Splunk UF with RAW TCP Mode (FINAL)
+# Using wildcard pattern for inputs
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: splunk-uf-config-raw-final
+  namespace: default
+data:
+  default.yml: |
+    splunk:
+      conf:
+        - key: outputs
+          value:
+            directory: /opt/splunkforwarder/etc/system/local
+            content:
+              tcpout:
+                defaultGroup: ec2_otel_tcp_raw
+                forwardedindex.filter.disable: true
+                indexAndForward: false
+              tcpout:ec2_otel_tcp_raw:
+                server: YOUR_OTEL_IP:9997
+                sendCookedData: false
+                forwardedindex.0.whitelist: main
+                forwardedindex.1.blacklist: _.*
+                forwardedindex.2.whitelist: .*
+        - key: inputs
+          value:
+            directory: /opt/splunkforwarder/etc/system/local
+            content:
+              default:
+                host: $decideOnStartup
+              monitor:///var/log/myapp/*.log:
+                disabled: false
+                sourcetype: python:phase6:k8s
+                index: main
+              monitor://$SPLUNK_HOME/var/log/splunk:
+                disabled: true
+              monitor://$SPLUNK_HOME/var/spool/splunk:
+                disabled: true
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: splunk-phase6-app
-  namespace: default
+  name: splunk-phase6-official-raw-final
   labels:
-    app: splunk-phase6
-    component: application
+    app: splunk-phase6-final
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: splunk-phase6
-      component: application
+      app: splunk-phase6-final
   template:
     metadata:
       labels:
-        app: splunk-phase6
-        component: application
+        app: splunk-phase6-final
     spec:
-      containers:
-      - name: app
-        image: 104013952213.dkr.ecr.us-east-1.amazonaws.com/splunk-phase6-app:latest
-        imagePullPolicy: Always
-        env:
-        - name: LOG_FILE
-          value: "/var/log/myapp/application.log"
-        - name: LOG_INTERVAL_SECONDS
-          value: "30"
-        volumeMounts:
-        - name: app-logs
-          mountPath: /var/log/myapp
-        resources:
-          requests:
-            memory: "128Mi"
-            cpu: "100m"
-          limits:
-            memory: "256Mi"
-            cpu: "200m"
-
-      - name: splunk-forwarder
-        image: 104013952213.dkr.ecr.us-east-1.amazonaws.com/splunk-phase6-forwarder-tcp:latest
-        imagePullPolicy: Always
-        volumeMounts:
-        - name: app-logs
-          mountPath: /var/log/myapp
-          readOnly: true
-        resources:
-          requests:
-            memory: "256Mi"
-            cpu: "100m"
-          limits:
-            memory: "512Mi"
-            cpu: "200m"
-
       volumes:
-      - name: app-logs
-        emptyDir: {}
+        - name: app-logs
+          emptyDir: {}
+        - name: splunk-config
+          configMap:
+            name: splunk-uf-config-raw-final
+
+      containers:
+        # Python app writing logs
+        - name: app
+          image: 104013952213.dkr.ecr.us-east-1.amazonaws.com/splunk-phase6-app:latest
+          env:
+            - name: LOG_FILE
+              value: /var/log/myapp/application.log
+            - name: LOG_INTERVAL_SECONDS
+              value: "30"
+          volumeMounts:
+            - name: app-logs
+              mountPath: /var/log/myapp
+          resources:
+            limits:
+              cpu: "200m"
+              memory: "256Mi"
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+
+        # OFFICIAL Splunk Universal Forwarder with RAW TCP!
+        - name: splunk-forwarder
+          image: splunk/universalforwarder:latest
+          env:
+            - name: SPLUNK_START_ARGS
+              value: "--accept-license"
+            - name: SPLUNK_PASSWORD
+              value: "changeme123"
+            - name: SPLUNK_GENERAL_TERMS
+              value: "--accept-sgt-current-at-splunk-com"
+            - name: SPLUNK_FORWARD_SERVER
+              value: "YOUR_OTEL_IP:9997"
+          volumeMounts:
+            - name: app-logs
+              mountPath: /var/log/myapp
+              readOnly: true
+            - name: splunk-config
+              mountPath: /tmp/defaults
+          resources:
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+            requests:
+              cpu: "200m"
+              memory: "256Mi"
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: splunk-phase6-app
-  namespace: default
+  name: splunk-phase6-final
   labels:
-    app: splunk-phase6
+    app: splunk-phase6-final
 spec:
   selector:
-    app: splunk-phase6
-    component: application
+    app: splunk-phase6-final
   ports:
-  - name: http
-    port: 80
-    targetPort: 8080
-  type: ClusterIP
+    - protocol: TCP
+      port: 80
+      targetPort: 80
 

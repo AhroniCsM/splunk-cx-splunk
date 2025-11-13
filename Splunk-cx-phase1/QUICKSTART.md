@@ -1,127 +1,79 @@
-# Quick Start Guide - Phase 1
+# Phase 1: Quick Start - Direct HEC to Splunk
 
-## Overview
-This Phase 1 setup includes a Python application with Splunk Universal Forwarder that can send logs to any endpoint (OTEL collector in Phase 2).
+## What This Does
+Sends logs directly from your Python application to Splunk Cloud using HEC (HTTP Event Collector).
 
-## Files Created
+## Prerequisites
+- Docker installed
+- Splunk Cloud HEC token
+- Splunk Cloud endpoint
 
-```
-Splunk-cx/
-├── app.py                    # Python app that generates logs
-├── Dockerfile               # Container with Splunk UF + Python app
-├── entrypoint.sh           # Startup script
-├── inputs.conf             # Splunk input config (what to monitor)
-├── outputs.conf.template   # Splunk output config (where to send)
-├── build.sh                # Helper script to build image
-├── run.sh                  # Helper script to run container
-├── README.md               # Full documentation
-└── QUICKSTART.md           # This file
-```
+## Files in This Phase
+- `app_hec.py` - Python application that sends logs via HEC
+- `Dockerfile.hec` - Docker image definition
+- `run-hec.sh` - Helper script (optional)
 
-## Step 1: Build the Docker Image
+## Quick Start (3 Steps)
 
+### Step 1: Set Your Credentials
 ```bash
-cd Splunk-cx
-./build.sh
+export SPLUNK_HEC_TOKEN="your-hec-token-here"
+export SPLUNK_HEC_URL="https://your-instance.splunkcloud.com:8088/services/collector"
 ```
 
-Or manually:
+### Step 2: Build the Docker Image
 ```bash
-docker build -t splunk-forwarder-app:latest .
+docker build -f Dockerfile.hec -t phase1-app .
 ```
 
-**Note:** First build takes ~5 minutes (downloads Splunk UF)
-
-## Step 2: Run the Container
-
-### Option A: Using the helper script
-
-Edit `run.sh` to set your endpoint:
-```bash
-export OTEL_HOST="your-otel-endpoint.com"
-export OTEL_PORT="9997"
-./run.sh
-```
-
-### Option B: Direct Docker command
-
+### Step 3: Run the Container
 ```bash
 docker run -d \
-  --name splunk-forwarder \
-  -e SPLUNK_FORWARDER_HOST=<your-endpoint> \
-  -e SPLUNK_FORWARDER_PORT=9997 \
-  splunk-forwarder-app:latest
+  --name phase1-app \
+  -e SPLUNK_HEC_TOKEN="${SPLUNK_HEC_TOKEN}" \
+  -e SPLUNK_HEC_URL="${SPLUNK_HEC_URL}" \
+  -e LOG_INTERVAL_SECONDS=30 \
+  phase1-app
 ```
 
-### For EKS OTEL Collector (Example)
-
+## View Logs
 ```bash
-docker run -d \
-  --name splunk-forwarder \
-  -e SPLUNK_FORWARDER_HOST=otel-collector.default.svc.cluster.local \
-  -e SPLUNK_FORWARDER_PORT=9997 \
-  splunk-forwarder-app:latest
+# View container logs
+docker logs -f phase1-app
+
+# Check if logs are reaching Splunk
+# Go to Splunk Cloud and search: index=main sourcetype="python:phase1"
 ```
 
-## Step 3: Verify It's Working
-
+## Stop and Clean Up
 ```bash
-# Check container is running
-docker ps | grep splunk-forwarder
-
-# View logs
-docker logs -f splunk-forwarder
-
-# View application logs
-docker exec -it splunk-forwarder tail -f /var/log/myapp/application.log
-
-# Check Splunk forwarder status
-docker exec -it splunk-forwarder /opt/splunkforwarder/bin/splunk status
+docker stop phase1-app
+docker rm phase1-app
 ```
 
-## What's Happening?
+## Configuration
 
-1. **Python App** generates random logs (INFO, WARNING, ERROR)
-2. Logs are written to `/var/log/myapp/application.log`
-3. **Splunk Universal Forwarder** monitors this file
-4. Logs are forwarded via TCP to your configured endpoint
-5. In Phase 2, OTEL will receive these logs
+### Environment Variables
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `SPLUNK_HEC_TOKEN` | Your Splunk HEC token | `12345678-1234-1234-1234-123456789012` |
+| `SPLUNK_HEC_URL` | Your Splunk HEC endpoint | `https://inputs.example.splunkcloud.com:8088/services/collector` |
+| `LOG_INTERVAL_SECONDS` | Seconds between log generation | `30` (default) |
 
-## Stopping and Cleaning Up
-
-```bash
-docker stop splunk-forwarder
-docker rm splunk-forwarder
+### Splunk Search
+Once running, find your logs in Splunk:
+```
+index=main sourcetype="python:phase1"
 ```
 
 ## Troubleshooting
 
-### Container exits immediately?
-```bash
-docker logs splunk-forwarder
-```
+**Logs not appearing in Splunk?**
+1. Verify HEC is enabled in Splunk Cloud
+2. Check token is valid
+3. Ensure endpoint URL is correct (include `/services/collector`)
+4. Check container logs: `docker logs phase1-app`
 
-### Can't connect to endpoint?
-```bash
-docker exec -it splunk-forwarder ping <your-endpoint>
-```
-
-### Splunk not running?
-```bash
-docker exec -it splunk-forwarder /opt/splunkforwarder/bin/splunk status
-```
-
-## Next: Phase 2
-
-Once this is working:
-1. Set up OTEL Collector in your EKS cluster
-2. Configure OTEL with Splunk receiver (port 9997)
-3. Configure OTEL exporters to send to Splunk AND Coralogix
-4. Update this container to point to OTEL endpoint
-
----
-
-**Phase 1 Complete!** ✅
-
-Ready to proceed to Phase 2 when you provide the OTEL endpoint details.
+**SSL Certificate errors?**
+- The app uses `verify=False` for SSL. For production, configure proper certificates.
 

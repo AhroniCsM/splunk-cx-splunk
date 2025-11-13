@@ -1,0 +1,80 @@
+receivers:
+  # File Log Receiver - reads from app's log file
+  filelog:
+    include:
+      - /var/log/myapp/application.log
+    start_at: beginning
+    include_file_path: true
+    include_file_name: false
+    operators:
+      - type: regex_parser
+        regex: '^(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}) - (?P<logger>\S+) - (?P<level>\w+) - (?P<message>.*)'
+        timestamp:
+          parse_from: attributes.timestamp
+          layout: '%Y-%m-%d %H:%M:%S,%f'
+      - type: move
+        from: attributes.message
+        to: body
+      - type: add
+        field: attributes.application
+        value: "MyApp-Phase4-Test"
+
+processors:
+  batch:
+    timeout: 10s
+    send_batch_size: 100
+
+  resource:
+    attributes:
+      - key: environment
+        value: production
+        action: upsert
+      - key: phase
+        value: "4-test"
+        action: upsert
+
+  # Add attributes to logs
+  attributes:
+    actions:
+      - key: collector
+        value: otel-phase4-test
+        action: insert
+
+exporters:
+  # Splunk HEC Exporter - forward to Splunk Cloud
+  splunk_hec/logs:
+    token: "${SPLUNK_HEC_TOKEN}"
+    endpoint: "${SPLUNK_HEC_URL}"
+    source: "phase4-test"
+    sourcetype: "python:phase4:test"
+    index: "main"
+    disable_compression: false
+    timeout: 30s
+    tls:
+      insecure_skip_verify: true
+
+  # Coralogix Exporter
+  coralogix:
+    domain: "${CORALOGIX_DOMAIN}"
+    private_key: "${CORALOGIX_PRIVATE_KEY}"
+    application_name: "${CORALOGIX_APPLICATION_NAME}"
+    subsystem_name: "${CORALOGIX_SUBSYSTEM_NAME}"
+    timeout: 30s
+
+  # Debug exporter for debugging
+  debug:
+    verbosity: normal
+    sampling_initial: 5
+    sampling_thereafter: 200
+
+service:
+  pipelines:
+    logs:
+      receivers: [filelog]  # Read from file
+      processors: [batch, resource, attributes]
+      exporters: [splunk_hec/logs, coralogix, debug]  # Send to BOTH!
+
+  telemetry:
+    logs:
+      level: info
+

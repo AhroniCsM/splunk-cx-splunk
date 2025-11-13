@@ -1,0 +1,68 @@
+receivers:
+  # File Log Receiver - reads from shared log file (same file as Splunk UF!)
+  filelog:
+    include:
+      - /var/log/myapp/application.log
+    start_at: beginning
+    include_file_path: true
+    include_file_name: false
+    operators:
+      - type: regex_parser
+        regex: '^(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}) - (?P<logger>\S+) - (?P<level>\w+) - (?P<message>.*)'
+        timestamp:
+          parse_from: attributes.timestamp
+          layout: '%Y-%m-%d %H:%M:%S,%f'
+      - type: move
+        from: attributes.message
+        to: body
+      - type: add
+        field: attributes.application
+        value: "MyApp-Phase4"
+
+processors:
+  batch:
+    timeout: 10s
+    send_batch_size: 100
+
+  resource:
+    attributes:
+      - key: environment
+        value: production
+        action: upsert
+      - key: phase
+        value: "4"
+        action: upsert
+
+  # Add attributes to logs
+  attributes:
+    actions:
+      - key: collector
+        value: otel-phase4
+        action: insert
+
+exporters:
+  # Coralogix Exporter - send to Coralogix
+  coralogix:
+    domain: "${CORALOGIX_DOMAIN}"
+    private_key: "${CORALOGIX_PRIVATE_KEY}"
+    application_name: "${CORALOGIX_APPLICATION_NAME}"
+    subsystem_name: "${CORALOGIX_SUBSYSTEM_NAME}"
+    timeout: 30s
+
+  # Debug exporter for debugging
+  debug:
+    verbosity: normal
+    sampling_initial: 5
+    sampling_thereafter: 200
+
+service:
+  pipelines:
+    logs:
+      receivers: [filelog]  # Read from SAME file as Splunk UF
+      processors: [batch, resource, attributes]
+      exporters: [coralogix, debug]  # Coralogix only (Splunk via Universal Forwarder)
+
+  telemetry:
+    logs:
+      level: info
+

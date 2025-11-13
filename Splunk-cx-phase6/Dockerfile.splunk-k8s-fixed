@@ -1,0 +1,79 @@
+# Fixed Splunk Universal Forwarder for Kubernetes - Phase 6
+# Uses full Debian base with all required dependencies
+FROM --platform=linux/amd64 debian:bullseye
+
+# Install ALL required dependencies for Splunk UF
+RUN apt-get update && apt-get install -y \
+    wget \
+    curl \
+    procps \
+    net-tools \
+    libssl1.1 \
+    libc6 \
+    libstdc++6 \
+    libgcc-s1 \
+    zlib1g \
+    && rm -rf /var/lib/apt/lists/*
+
+# Download and install Splunk Universal Forwarder
+WORKDIR /tmp
+RUN wget -O splunkforwarder.tgz \
+    "https://download.splunk.com/products/universalforwarder/releases/9.3.1/linux/splunkforwarder-9.3.1-0b8d769cb912-Linux-x86_64.tgz" \
+    && tar -xzf splunkforwarder.tgz -C /opt \
+    && rm splunkforwarder.tgz
+
+# Create Splunk user
+RUN groupadd -r splunk && useradd -r -g splunk -d /opt/splunkforwarder splunk
+
+# Copy configuration files
+COPY inputs.conf /opt/splunkforwarder/etc/system/local/inputs.conf
+COPY outputs-tcp-ec2.conf /opt/splunkforwarder/etc/system/local/outputs.conf
+
+# Set ownership
+RUN chown -R splunk:splunk /opt/splunkforwarder
+
+# Create entrypoint script
+RUN echo '#!/bin/bash' > /entrypoint.sh && \
+    echo 'set -e' >> /entrypoint.sh && \
+    echo '' >> /entrypoint.sh && \
+    echo 'echo "================================================================="' >> /entrypoint.sh && \
+    echo 'echo "Splunk Universal Forwarder - Phase 6 Kubernetes (FIXED)"' >> /entrypoint.sh && \
+    echo 'echo "================================================================="' >> /entrypoint.sh && \
+    echo 'echo "Configuration:"' >> /entrypoint.sh && \
+    echo 'echo "  Input: /var/log/myapp/application.log"' >> /entrypoint.sh && \
+    echo 'echo "  Output: TCP to EC2 13.61.147.62:9997"' >> /entrypoint.sh && \
+    echo 'echo "  Sourcetype: python:phase6:k8s"' >> /entrypoint.sh && \
+    echo 'echo "  Target: OTEL tcplog receiver on EC2"' >> /entrypoint.sh && \
+    echo 'echo "  Base: Full Debian with all dependencies"' >> /entrypoint.sh && \
+    echo 'echo "================================================================="' >> /entrypoint.sh && \
+    echo '' >> /entrypoint.sh && \
+    echo '# Wait for log file to exist' >> /entrypoint.sh && \
+    echo 'until [ -f /var/log/myapp/application.log ]; do' >> /entrypoint.sh && \
+    echo '    echo "Waiting for log file..."' >> /entrypoint.sh && \
+    echo '    sleep 2' >> /entrypoint.sh && \
+    echo 'done' >> /entrypoint.sh && \
+    echo '' >> /entrypoint.sh && \
+    echo 'echo "Log file found! Starting Splunk Universal Forwarder..."' >> /entrypoint.sh && \
+    echo '' >> /entrypoint.sh && \
+    echo '# Change to splunk user and start Splunk' >> /entrypoint.sh && \
+    echo 'cd /opt/splunkforwarder' >> /entrypoint.sh && \
+    echo 'su -s /bin/bash splunk -c "/opt/splunkforwarder/bin/splunk start --accept-license --answer-yes --no-prompt"' >> /entrypoint.sh && \
+    echo '' >> /entrypoint.sh && \
+    echo 'echo "Splunk started successfully!"' >> /entrypoint.sh && \
+    echo '' >> /entrypoint.sh && \
+    echo '# Check if Splunk is running' >> /entrypoint.sh && \
+    echo 'su -s /bin/bash splunk -c "/opt/splunkforwarder/bin/splunk status"' >> /entrypoint.sh && \
+    echo '' >> /entrypoint.sh && \
+    echo '# Keep container alive and show logs' >> /entrypoint.sh && \
+    echo 'echo "Tailing splunkd.log..."' >> /entrypoint.sh && \
+    echo 'tail -f /opt/splunkforwarder/var/log/splunk/splunkd.log' >> /entrypoint.sh && \
+    chmod +x /entrypoint.sh
+
+# Expose no ports (client only)
+EXPOSE 8089
+
+# Run as root initially (entrypoint will switch to splunk user)
+USER root
+
+ENTRYPOINT ["/entrypoint.sh"]
+

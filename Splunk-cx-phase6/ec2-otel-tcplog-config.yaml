@@ -1,0 +1,73 @@
+# OpenTelemetry Collector Configuration for EC2
+# Phase 6: tcplog receiver for Kubernetes TCP logs
+
+receivers:
+  # tcplog receiver - receives TCP from Kubernetes Splunk UF
+  tcplog:
+    listen_address: "0.0.0.0:9997"
+    attributes: {}
+    add_attributes: true
+    encoding: utf-8
+    max_log_size: 1MiB
+
+processors:
+  batch:
+    timeout: 10s
+    send_batch_size: 100
+
+  resource:
+    attributes:
+      - key: environment
+        value: production
+        action: upsert
+      - key: phase
+        value: "6-k8s-tcp"
+        action: upsert
+      - key: source
+        value: kubernetes
+        action: upsert
+
+  attributes:
+    actions:
+      - key: collector
+        value: ec2-otel-tcplog
+        action: insert
+
+exporters:
+  # Splunk HEC Exporter
+  splunk_hec/logs:
+    token: "YOUR_SPLUNK_HEC_TOKEN"
+    endpoint: "https://your-instance.splunkcloud.com:8088"
+    source: "k8s-phase6-tcp"
+    sourcetype: "python:phase6:k8s"
+    index: "main"
+    disable_compression: false
+    timeout: 30s
+    tls:
+      insecure_skip_verify: true
+
+  # Coralogix Exporter
+  coralogix:
+    domain: "eu2.coralogix.com"
+    private_key: "YOUR_CORALOGIX_PRIVATE_KEY"
+    application_name: "k8s-phase6-tcp"
+    subsystem_name: "kubernetes-central"
+    timeout: 30s
+
+  # Debug exporter
+  debug:
+    verbosity: detailed
+    sampling_initial: 10
+    sampling_thereafter: 100
+
+service:
+  pipelines:
+    logs:
+      receivers: [tcplog]  # Receive TCP from K8s Splunk UF
+      processors: [batch, resource, attributes]
+      exporters: [splunk_hec/logs, coralogix, debug]
+
+  telemetry:
+    logs:
+      level: info
+

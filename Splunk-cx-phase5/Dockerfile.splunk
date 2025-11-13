@@ -1,0 +1,40 @@
+# Splunk Universal Forwarder - TCP Configuration
+# Phase 5: Traditional TCP forwarding
+FROM --platform=linux/amd64 debian:bullseye-slim
+
+RUN apt-get update && apt-get install -y \
+    wget \
+    procps \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /tmp
+RUN wget -O splunkforwarder.tgz \
+    "https://download.splunk.com/products/universalforwarder/releases/9.3.1/linux/splunkforwarder-9.3.1-0b8d769cb912-Linux-x86_64.tgz" \
+    && tar -xzf splunkforwarder.tgz -C /opt \
+    && rm splunkforwarder.tgz
+
+ENV SPLUNK_HOME=/opt/splunkforwarder
+ENV PATH=$SPLUNK_HOME/bin:$PATH
+
+COPY inputs.conf /opt/splunkforwarder/etc/system/local/inputs.conf
+COPY outputs.conf /opt/splunkforwarder/etc/system/local/outputs.conf
+
+RUN echo '#!/bin/bash\n\
+set -e\n\
+echo "================================================================="\n\
+echo "Starting Splunk Universal Forwarder - Phase 5 (TCP)"\n\
+echo "================================================================="\n\
+echo "Configuration:"\n\
+echo "  Input: /var/log/myapp/application.log"\n\
+echo "  Output: TCP port 9997 to Splunk Cloud"\n\
+echo "  Sourcetype: python:phase5:tcp"\n\
+echo "================================================================="\n\
+/opt/splunkforwarder/bin/splunk start --accept-license --answer-yes --no-prompt\n\
+echo "Splunk Universal Forwarder started successfully"\n\
+echo "Forwarding logs via TCP..."\n\
+tail -f /opt/splunkforwarder/var/log/splunk/splunkd.log\n\
+' > /entrypoint.sh && chmod +x /entrypoint.sh
+
+EXPOSE 8089
+CMD ["/entrypoint.sh"]
+

@@ -1,0 +1,26 @@
+FROM python:3.9-slim
+
+# Install dependencies for testing (no Splunk)
+RUN apt-get update && apt-get install -y \
+    netcat-openbsd \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create necessary directories
+RUN mkdir -p /var/log/myapp /app
+
+# Copy Python application
+COPY app.py /app/app.py
+RUN chmod +x /app/app.py
+
+# Copy simple forwarder script
+COPY simple_forwarder.sh /app/simple_forwarder.sh
+RUN chmod +x /app/simple_forwarder.sh
+
+# Copy simple entrypoint
+COPY entrypoint_simple.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+WORKDIR /app
+
+ENTRYPOINT ["/entrypoint.sh"]
+

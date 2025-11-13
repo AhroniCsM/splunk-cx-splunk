@@ -1,0 +1,79 @@
+# OpenTelemetry Collector Configuration - Phase 5
+# Reads from file and sends to Coralogix only
+# (Splunk is handled by Splunk UF via TCP)
+
+receivers:
+  filelog:
+    include:
+      - /var/log/myapp/application.log
+    start_at: beginning
+    include_file_path: true
+    include_file_name: false
+    operators:
+      # Parse log format
+      - type: regex_parser
+        regex: '^(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}) - (?P<logger>\S+) - (?P<level>\w+) - (?P<message>.*)'
+        timestamp:
+          parse_from: attributes.timestamp
+          layout: '%Y-%m-%d %H:%M:%S,%f'
+      # Move message to body
+      - type: move
+        from: attributes.message
+        to: body
+      # Add application metadata
+      - type: add
+        field: attributes.application
+        value: "MyApp-Phase5-TCP"
+
+processors:
+  batch:
+    timeout: 10s
+    send_batch_size: 100
+
+  resource:
+    attributes:
+      - key: environment
+        value: production
+        action: upsert
+      - key: phase
+        value: "5"
+        action: upsert
+      - key: splunk_method
+        value: "tcp"
+        action: upsert
+
+  attributes:
+    actions:
+      - key: collector
+        value: otel-phase5
+        action: insert
+      - key: architecture
+        value: dual-path-tcp
+        action: insert
+
+exporters:
+  # Coralogix exporter only
+  # Splunk is handled by Splunk UF via TCP
+  coralogix:
+    domain: "${CORALOGIX_DOMAIN}"
+    private_key: "${CORALOGIX_PRIVATE_KEY}"
+    application_name: "${CORALOGIX_APPLICATION_NAME}"
+    subsystem_name: "${CORALOGIX_SUBSYSTEM_NAME}"
+    timeout: 30s
+
+  debug:
+    verbosity: normal
+    sampling_initial: 5
+    sampling_thereafter: 200
+
+service:
+  pipelines:
+    logs:
+      receivers: [filelog]
+      processors: [batch, resource, attributes]
+      exporters: [coralogix, debug]  # Coralogix only (Splunk via UF TCP)
+
+  telemetry:
+    logs:
+      level: info
+

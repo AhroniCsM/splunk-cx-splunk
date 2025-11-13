@@ -1,0 +1,29 @@
+# ⚠️ THIS FILE IS ONLY FOR THE OTEL COLLECTOR (runs separately)
+# 
+# The customer's app is NOT in this docker-compose!
+# Customer runs their app EXACTLY as Phase 1, but changes HEC endpoint to OTEL
+
+version: '3.8'
+
+services:
+  # OTEL Collector - receives HEC, forwards to BOTH Splunk and Coralogix
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:latest
+    container_name: otel-collector-phase3
+    command: ["--config=/etc/otelcol-contrib/config.yaml"]
+    volumes:
+      - ./otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml
+    ports:
+      - "8089:8088"   # HEC receiver (customer sends here)
+      - "4319:4317"   # OTLP gRPC
+      - "4320:4318"   # OTLP HTTP  
+      - "8889:8888"   # Prometheus metrics
+    environment:
+      - SPLUNK_HEC_TOKEN=YOUR_SPLUNK_HEC_TOKEN
+      - SPLUNK_HEC_URL=https://your-instance.splunkcloud.com:8088
+      - CORALOGIX_DOMAIN=eu2.coralogix.com
+      - CORALOGIX_PRIVATE_KEY=YOUR_CORALOGIX_PRIVATE_KEY
+      - CORALOGIX_APPLICATION_NAME=MyApp-Phase3
+      - CORALOGIX_SUBSYSTEM_NAME=Docker
+    restart: unless-stopped
+

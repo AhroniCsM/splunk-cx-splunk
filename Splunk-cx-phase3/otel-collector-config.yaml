@@ -1,0 +1,66 @@
+receivers:
+  # Splunk HEC Receiver - receives from customer's app
+  # Customer changes endpoint to point here instead of Splunk Cloud
+  splunk_hec:
+    endpoint: 0.0.0.0:8088
+    access_token_passthrough: true
+
+processors:
+  batch:
+    timeout: 10s
+    send_batch_size: 100
+
+  resource:
+    attributes:
+      - key: environment
+        value: production
+        action: upsert
+      - key: phase
+        value: "3"
+        action: upsert
+
+  attributes:
+    actions:
+      - key: collector
+        value: otel-phase3
+        action: insert
+
+exporters:
+  # Splunk HEC Exporter
+  # ⚠️ Requires "Indexer Acknowledgment" to be DISABLED in Splunk HEC token settings
+  splunk_hec/logs:
+    token: "${SPLUNK_HEC_TOKEN}"
+    endpoint: "${SPLUNK_HEC_URL}"
+    source: "phase3-otel"
+    sourcetype: "python:phase3"
+    index: "main"
+    disable_compression: false
+    timeout: 30s
+    tls:
+      insecure_skip_verify: true
+
+  # Coralogix Exporter - always works!
+  coralogix:
+    domain: "${CORALOGIX_DOMAIN}"
+    private_key: "${CORALOGIX_PRIVATE_KEY}"
+    application_name: "${CORALOGIX_APPLICATION_NAME}"
+    subsystem_name: "${CORALOGIX_SUBSYSTEM_NAME}"
+    timeout: 30s
+
+  # Debug exporter
+  debug:
+    verbosity: normal
+    sampling_initial: 5
+    sampling_thereafter: 200
+
+service:
+  pipelines:
+    logs:
+      receivers: [splunk_hec]  # Receive HEC from customer app
+      processors: [batch, resource, attributes]
+      exporters: [splunk_hec/logs, coralogix, debug]  # Forward to BOTH!
+
+  telemetry:
+    logs:
+      level: info
+

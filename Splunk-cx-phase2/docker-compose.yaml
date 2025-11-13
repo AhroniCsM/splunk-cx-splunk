@@ -1,0 +1,54 @@
+version: '3.8'
+
+services:
+  # OpenTelemetry Collector - reads from app's log file, sends to BOTH destinations
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:latest
+    container_name: otel-collector-phase2
+    command: ["--config=/etc/otelcol-contrib/config.yaml"]
+    volumes:
+      - ./otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml
+      - app-logs:/var/log/myapp:ro  # Read-only access to app logs
+    ports:
+      - "4317:4317"   # OTLP gRPC receiver
+      - "4318:4318"   # OTLP HTTP receiver
+      - "8888:8888"   # Prometheus metrics exposed by the collector
+    environment:
+      - SPLUNK_HEC_TOKEN=YOUR_SPLUNK_HEC_TOKEN
+      - SPLUNK_HEC_URL=https://your-instance.splunkcloud.com:8088/services/collector
+      - CORALOGIX_DOMAIN=eu2.coralogix.com
+      - CORALOGIX_PRIVATE_KEY=YOUR_CORALOGIX_PRIVATE_KEY
+      - CORALOGIX_APPLICATION_NAME=MyApp-Phase2
+      - CORALOGIX_SUBSYSTEM_NAME=Docker
+    networks:
+      - phase2-network
+    restart: unless-stopped
+    depends_on:
+      - python-app
+
+  # Python Application - SAME as Phase 1 (HEC to Splunk + writes to file)
+  # Shipper #1 is BUILT-IN to the app (sends HEC to Splunk)
+  python-app:
+    build:
+      context: .
+      dockerfile: Dockerfile.hec
+    container_name: python-app-phase2
+    environment:
+      - SPLUNK_HEC_URL=https://your-instance.splunkcloud.com:8088/services/collector
+      - SPLUNK_HEC_TOKEN=YOUR_SPLUNK_HEC_TOKEN
+      - SPLUNK_SOURCETYPE=python:phase2
+      - SPLUNK_INDEX=main
+      - LOG_INTERVAL_SECONDS=30
+    volumes:
+      - app-logs:/var/log/myapp  # Shared volume with OTEL
+    networks:
+      - phase2-network
+    restart: unless-stopped
+
+volumes:
+  app-logs:  # Shared volume for log file
+
+networks:
+  phase2-network:
+    driver: bridge
+

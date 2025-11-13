@@ -1,0 +1,109 @@
+# Phase 6 - RAW TCP Mode with Official Splunk Image
+# Uses sendCookedData=false for plain text TCP output
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: splunk-uf-raw-tcp-config
+  namespace: default
+data:
+  outputs.conf: |
+    [tcpout]
+    defaultGroup = otel_raw_tcp
+    
+    [tcpout:otel_raw_tcp]
+    server = YOUR_OTEL_IP:9997
+    sendCookedData = false
+    # Send plain text instead of binary cooked mode
+    # This makes data compatible with OTEL tcplog receiver
+  
+  inputs.conf: |
+    [monitor:///var/log/myapp/application.log]
+    disabled = false
+    sourcetype = python:phase6:k8s
+    index = main
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: splunk-phase6-raw-tcp-official
+  labels:
+    app: splunk-phase6-raw-official
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: splunk-phase6-raw-official
+  template:
+    metadata:
+      labels:
+        app: splunk-phase6-raw-official
+    spec:
+      volumes:
+        - name: app-logs
+          emptyDir: {}
+        - name: splunk-config
+          configMap:
+            name: splunk-uf-raw-tcp-config
+      
+      containers:
+        # Python app writing logs
+        - name: app
+          image: 104013952213.dkr.ecr.us-east-1.amazonaws.com/splunk-phase6-app:latest
+          env:
+            - name: LOG_FILE
+              value: /var/log/myapp/application.log
+            - name: LOG_INTERVAL_SECONDS
+              value: "30"
+          volumeMounts:
+            - name: app-logs
+              mountPath: /var/log/myapp
+          resources:
+            limits:
+              cpu: "200m"
+              memory: "256Mi"
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+        
+        # OFFICIAL Splunk Universal Forwarder (RAW TCP mode!)
+        - name: splunk-forwarder
+          image: splunk/universalforwarder:latest
+          env:
+            - name: SPLUNK_START_ARGS
+              value: "--accept-license"
+            - name: SPLUNK_PASSWORD
+              value: "changeme123"
+            - name: SPLUNK_GENERAL_TERMS
+              value: "--accept-sgt-current-at-splunk-com"
+            - name: SPLUNK_CMD
+              value: "cmd /bin/bash -c 'cp /mnt/splunk-config/*.conf /opt/splunkforwarder/etc/system/local/ && /sbin/entrypoint.sh start-service'"
+          volumeMounts:
+            - name: app-logs
+              mountPath: /var/log/myapp
+              readOnly: true
+            - name: splunk-config
+              mountPath: /mnt/splunk-config
+              readOnly: true
+          resources:
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+            requests:
+              cpu: "200m"
+              memory: "256Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: splunk-phase6-raw-tcp-official
+  labels:
+    app: splunk-phase6-raw-official
+spec:
+  selector:
+    app: splunk-phase6-raw-official
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 80
+

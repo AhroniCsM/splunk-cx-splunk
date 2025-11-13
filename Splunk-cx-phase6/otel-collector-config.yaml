@@ -1,0 +1,79 @@
+# OpenTelemetry Collector - Phase 6
+# Experimental: Receiving Splunk TCP via tcplog receiver
+
+receivers:
+  # tcplog receiver - receives raw TCP logs
+  # ⚠️ This is NOT Splunk's proprietary TCP protocol
+  # It's for generic TCP log streams
+  tcplog:
+    listen_address: "0.0.0.0:9997"  # Splunk's default TCP port
+    attributes: {}
+    add_attributes: true
+    encoding: utf-8
+    
+  # Also keep HEC as fallback
+  splunk_hec:
+    endpoint: 0.0.0.0:8088
+    access_token_passthrough: true
+
+processors:
+  batch:
+    timeout: 10s
+    send_batch_size: 100
+
+  resource:
+    attributes:
+      - key: environment
+        value: production
+        action: upsert
+      - key: phase
+        value: "6-tcp-experimental"
+        action: upsert
+
+  attributes:
+    actions:
+      - key: collector
+        value: otel-phase6-tcp
+        action: insert
+      - key: source_protocol
+        value: tcp
+        action: insert
+
+exporters:
+  # Splunk HEC Exporter
+  splunk_hec/logs:
+    token: "${SPLUNK_HEC_TOKEN}"
+    endpoint: "${SPLUNK_HEC_URL}"
+    source: "phase6-tcp"
+    sourcetype: "python:phase6:tcp"
+    index: "main"
+    disable_compression: false
+    timeout: 30s
+    tls:
+      insecure_skip_verify: true
+
+  # Coralogix Exporter
+  coralogix:
+    domain: "${CORALOGIX_DOMAIN}"
+    private_key: "${CORALOGIX_PRIVATE_KEY}"
+    application_name: "${CORALOGIX_APPLICATION_NAME}"
+    subsystem_name: "${CORALOGIX_SUBSYSTEM_NAME}"
+    timeout: 30s
+
+  # Debug exporter
+  debug:
+    verbosity: detailed
+    sampling_initial: 10
+    sampling_thereafter: 100
+
+service:
+  pipelines:
+    logs:
+      receivers: [tcplog, splunk_hec]  # Both TCP and HEC
+      processors: [batch, resource, attributes]
+      exporters: [splunk_hec/logs, coralogix, debug]
+
+  telemetry:
+    logs:
+      level: info
+

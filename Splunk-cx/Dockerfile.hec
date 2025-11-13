@@ -1,0 +1,18 @@
+FROM python:3.9-slim
+
+# Install required Python packages
+RUN pip install --no-cache-dir requests urllib3
+
+# Create necessary directories
+RUN mkdir -p /var/log/myapp /app
+
+# Copy Python application
+COPY app_hec.py /app/app.py
+RUN chmod +x /app/app.py
+
+# Set working directory
+WORKDIR /app
+
+# Run the application
+CMD ["python3", "/app/app.py"]
+

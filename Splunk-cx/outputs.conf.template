@@ -1,0 +1,13 @@
+# Splunk Universal Forwarder - Outputs Configuration Template
+# This template will be populated with environment variables at runtime
+
+[tcpout]
+defaultGroup = default-autolb-group
+disabled = false
+
+[tcpout:default-autolb-group]
+server = SPLUNK_FORWARDER_HOST:SPLUNK_FORWARDER_PORT
+# Optional: Uncomment if using SSL
+# sslVerifyServerCert = false
+# useACK = true
+

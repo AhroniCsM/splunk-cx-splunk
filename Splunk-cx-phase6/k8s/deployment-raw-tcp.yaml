@@ -1,0 +1,72 @@
+# Phase 6 - RAW TCP Mode (sendCookedData=false)
+# This should work with OTEL tcplog receiver!
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: splunk-phase6-raw-tcp
+  labels:
+    app: splunk-phase6-raw
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: splunk-phase6-raw
+  template:
+    metadata:
+      labels:
+        app: splunk-phase6-raw
+    spec:
+      volumes:
+        - name: app-logs
+          emptyDir: {}
+
+      containers:
+        # Python app writing logs
+        - name: app
+          image: 104013952213.dkr.ecr.us-east-1.amazonaws.com/splunk-phase6-app:latest
+          env:
+            - name: LOG_FILE
+              value: /var/log/myapp/application.log
+            - name: LOG_INTERVAL_SECONDS
+              value: "30"
+          volumeMounts:
+            - name: app-logs
+              mountPath: /var/log/myapp
+          resources:
+            limits:
+              cpu: "200m"
+              memory: "256Mi"
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+
+        # Splunk UF with RAW TCP mode
+        - name: splunk-forwarder
+          image: 104013952213.dkr.ecr.us-east-1.amazonaws.com/splunk-phase6-forwarder-raw:latest
+          volumeMounts:
+            - name: app-logs
+              mountPath: /var/log/myapp
+              readOnly: true
+          resources:
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+            requests:
+              cpu: "200m"
+              memory: "256Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: splunk-phase6-raw-tcp
+  labels:
+    app: splunk-phase6-raw
+spec:
+  selector:
+    app: splunk-phase6-raw
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 80
+

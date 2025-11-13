@@ -1,0 +1,41 @@
+# Splunk Universal Forwarder - TCP to EC2 for Kubernetes
+# Phase 6: Kubernetes deployment
+FROM --platform=linux/amd64 debian:bullseye-slim
+
+RUN apt-get update && apt-get install -y \
+    wget \
+    procps \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /tmp
+RUN wget -O splunkforwarder.tgz \
+    "https://download.splunk.com/products/universalforwarder/releases/9.3.1/linux/splunkforwarder-9.3.1-0b8d769cb912-Linux-x86_64.tgz" \
+    && tar -xzf splunkforwarder.tgz -C /opt \
+    && rm splunkforwarder.tgz
+
+ENV SPLUNK_HOME=/opt/splunkforwarder
+ENV PATH=$SPLUNK_HOME/bin:$PATH
+
+COPY inputs.conf /opt/splunkforwarder/etc/system/local/inputs.conf
+COPY outputs-tcp-ec2.conf /opt/splunkforwarder/etc/system/local/outputs.conf
+
+RUN echo '#!/bin/bash\n\
+set -e\n\
+echo "================================================================="\n\
+echo "Splunk Universal Forwarder - Phase 6 Kubernetes"\n\
+echo "================================================================="\n\
+echo "Configuration:"\n\
+echo "  Input: /var/log/myapp/application.log"\n\
+echo "  Output: TCP to EC2 13.61.147.62:9997"\n\
+echo "  Sourcetype: python:phase6:k8s"\n\
+echo "  Target: OTEL tcplog receiver on EC2"\n\
+echo "================================================================="\n\
+/opt/splunkforwarder/bin/splunk start --accept-license --answer-yes --no-prompt\n\
+echo "Splunk Universal Forwarder started successfully"\n\
+echo "Forwarding logs via TCP to EC2 OTEL..."\n\
+tail -f /opt/splunkforwarder/var/log/splunk/splunkd.log\n\
+' > /entrypoint.sh && chmod +x /entrypoint.sh
+
+EXPOSE 8089
+CMD ["/entrypoint.sh"]
+

@@ -1,0 +1,45 @@
+# Splunk Universal Forwarder - x86_64 architecture
+# Must be built with --platform linux/amd64 for compatibility
+FROM --platform=linux/amd64 debian:bullseye-slim
+
+# Install dependencies
+RUN apt-get update && apt-get install -y \
+    wget \
+    procps \
+    && rm -rf /var/lib/apt/lists/*
+
+# Download and install Splunk Universal Forwarder
+# Using version 9.3.1 (x86_64)
+WORKDIR /tmp
+RUN wget -O splunkforwarder.tgz \
+    "https://download.splunk.com/products/universalforwarder/releases/9.3.1/linux/splunkforwarder-9.3.1-0b8d769cb912-Linux-x86_64.tgz" \
+    && tar -xzf splunkforwarder.tgz -C /opt \
+    && rm splunkforwarder.tgz
+
+# Set Splunk environment
+ENV SPLUNK_HOME=/opt/splunkforwarder
+ENV PATH=$SPLUNK_HOME/bin:$PATH
+
+# Copy configuration files
+COPY inputs.conf /opt/splunkforwarder/etc/system/local/inputs.conf
+COPY outputs.conf /opt/splunkforwarder/etc/system/local/outputs.conf
+
+# Create entrypoint script
+RUN echo '#!/bin/bash\n\
+set -e\n\
+\n\
+echo "Starting Splunk Universal Forwarder..."\n\
+\n\
+# Accept license and start Splunk\n\
+/opt/splunkforwarder/bin/splunk start --accept-license --answer-yes --no-prompt\n\
+\n\
+echo "Splunk Universal Forwarder started successfully"\n\
+\n\
+# Keep container running and tail logs\n\
+tail -f /opt/splunkforwarder/var/log/splunk/splunkd.log\n\
+' > /entrypoint.sh && chmod +x /entrypoint.sh
+
+EXPOSE 9997 8089
+
+CMD ["/entrypoint.sh"]
+

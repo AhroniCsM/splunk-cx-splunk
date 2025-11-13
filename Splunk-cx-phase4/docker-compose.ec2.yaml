@@ -1,0 +1,39 @@
+version: '3.8'
+
+services:
+  python-app:
+    build:
+      context: .
+      dockerfile: Dockerfile.app
+    container_name: python-app-phase4-ec2
+    environment:
+      - LOG_FILE=/var/log/myapp/application.log
+      - LOG_INTERVAL_SECONDS=30
+    volumes:
+      - app-logs:/var/log/myapp
+    networks:
+      - phase4-ec2-network
+    restart: unless-stopped
+
+  splunk-forwarder:
+    build:
+      context: .
+      dockerfile: Dockerfile.splunk-ec2
+      platforms:
+        - linux/amd64
+    platform: linux/amd64
+    container_name: splunk-uf-phase4-ec2
+    volumes:
+      - app-logs:/var/log/myapp:ro
+    networks:
+      - phase4-ec2-network
+    restart: unless-stopped
+    depends_on:
+      - python-app
+
+volumes:
+  app-logs:
+
+networks:
+  phase4-ec2-network:
+    driver: bridge

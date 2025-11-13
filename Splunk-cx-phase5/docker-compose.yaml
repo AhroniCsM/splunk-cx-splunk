@@ -1,0 +1,61 @@
+version: '3.8'
+
+services:
+  # Python application - writes logs to file
+  python-app:
+    build:
+      context: .
+      dockerfile: Dockerfile.app
+    container_name: python-app-phase5
+    environment:
+      - LOG_FILE=/var/log/myapp/application.log
+      - LOG_INTERVAL_SECONDS=30
+    volumes:
+      - app-logs:/var/log/myapp  # Shared volume for logs
+    networks:
+      - phase5-network
+    restart: unless-stopped
+
+  # Splunk Universal Forwarder - reads file, sends TCP to Splunk Cloud
+  splunk-forwarder:
+    build:
+      context: .
+      dockerfile: Dockerfile.splunk
+      platforms:
+        - linux/amd64
+    platform: linux/amd64  # Force x86_64 for Splunk UF
+    container_name: splunk-uf-phase5-tcp
+    volumes:
+      - app-logs:/var/log/myapp:ro  # Read-only access to app logs
+    networks:
+      - phase5-network
+    restart: unless-stopped
+    depends_on:
+      - python-app
+
+  # OTEL Collector - reads file, sends to Coralogix
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:latest
+    container_name: otel-collector-phase5
+    command: ["--config=/etc/otelcol-contrib/config.yaml"]
+    volumes:
+      - ./otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml
+      - app-logs:/var/log/myapp:ro  # Read-only access to app logs
+    environment:
+      - CORALOGIX_DOMAIN=eu2.coralogix.com
+      - CORALOGIX_PRIVATE_KEY=YOUR_CORALOGIX_PRIVATE_KEY
+      - CORALOGIX_APPLICATION_NAME=MyApp-Phase5-TCP
+      - CORALOGIX_SUBSYSTEM_NAME=Docker
+    networks:
+      - phase5-network
+    restart: unless-stopped
+    depends_on:
+      - python-app
+
+volumes:
+  app-logs:  # Shared volume for log file
+
+networks:
+  phase5-network:
+    driver: bridge
+

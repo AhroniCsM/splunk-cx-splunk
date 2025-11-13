@@ -1,0 +1,72 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: splunk-phase6-raw-simple
+  namespace: default
+  labels:
+    app: splunk-phase6-raw-simple
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: splunk-phase6-raw-simple
+  template:
+    metadata:
+      labels:
+        app: splunk-phase6-raw-simple
+    spec:
+      containers:
+      - name: app
+        image: 104013952213.dkr.ecr.us-east-1.amazonaws.com/splunk-phase6-app:latest
+        imagePullPolicy: Always
+        env:
+        - name: LOG_FILE
+          value: "/var/log/myapp/application.log"
+        - name: LOG_INTERVAL_SECONDS
+          value: "30"
+        volumeMounts:
+        - name: app-logs
+          mountPath: /var/log/myapp
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+      
+      - name: splunk-forwarder
+        image: 104013952213.dkr.ecr.us-east-1.amazonaws.com/splunk-phase6-forwarder-raw:latest
+        imagePullPolicy: Always
+        volumeMounts:
+        - name: app-logs
+          mountPath: /var/log/myapp
+          readOnly: true
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "200m"
+      
+      volumes:
+      - name: app-logs
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: splunk-phase6-raw-simple
+  namespace: default
+  labels:
+    app: splunk-phase6-raw-simple
+spec:
+  selector:
+    app: splunk-phase6-raw-simple
+  ports:
+  - name: http
+    port: 80
+    targetPort: 8080
+  type: ClusterIP
+

@@ -124,7 +124,7 @@ uri = http://YOUR_OTEL_IP:8088/services/collector
 
 ---
 
-### Phase 5: Independent Dual Paths
+### Phase 5: Independent Dual Paths - TCP
 ```
                                 ┌──────────────┐    TCP
                            ┌───→│   Splunk     │──────────→ Splunk Cloud
@@ -152,7 +152,7 @@ uri = http://YOUR_OTEL_IP:8088/services/collector
 
 ---
 
-### Phase 6: Splunk UF RAW TCP ⭐ RECOMMENDED
+### Phase 6: Splunk UF RAW TCP 
 ```
 ┌─────────────┐                ┌──────────────┐     RAW TCP    ┌──────────────┐
 │   Python    │  Writes to     │   Splunk     │  (Plain Text)  │     OTEL     │──→ Splunk Cloud

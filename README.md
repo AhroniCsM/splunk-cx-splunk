@@ -38,7 +38,7 @@ This repository contains 6 different integration patterns for sending logs from 
 - Can modify application code
 - No need for additional infrastructure
 
-[📖 Full Documentation](./Splunk-cx/README.md)
+[📖 Full Documentation](./Splunk-cx-phase1/README.md)
 
 ---
 
